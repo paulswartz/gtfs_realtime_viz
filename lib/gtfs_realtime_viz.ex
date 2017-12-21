@@ -70,6 +70,9 @@ defmodule GTFSRealtimeViz do
     |> vehicles_by_stop_id()
   end
 
+  def vehicles_we_care_about(state, routes) when routes == %{} do
+    state
+  end
   def vehicles_we_care_about(state, routes) do
     Enum.map(state,
       fn {descriptor, position_list} ->
