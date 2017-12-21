@@ -44,7 +44,8 @@ defmodule GTFSRealtimeViz do
   def visualize(group, opts) do
     routes = Map.keys(opts)
     vehicle_archive = get_vehicle_archive(group, routes)
-    [vehicle_archive: vehicle_archive, routes: opts, render_diff?: false]
+    routes = routes_from_opts(opts, vehicle_archive)
+    [vehicle_archive: vehicle_archive, routes: routes, render_diff?: false]
     |> gen_html
     |> Phoenix.HTML.safe_to_string
   end
@@ -58,7 +59,8 @@ defmodule GTFSRealtimeViz do
     routes = Map.keys(opts)
     archive_1 = get_vehicle_archive(group_1, routes)
     archive_2 = get_vehicle_archive(group_2, routes)
-    [vehicle_archive: Enum.zip(archive_1, archive_2), routes: opts, render_diff?: true]
+    routes = routes_from_opts(opts, archive_1 ++ archive_2)
+    [vehicle_archive: Enum.zip(archive_1, archive_2), routes: routes, render_diff?: true]
     |> gen_html()
     |> Phoenix.HTML.safe_to_string()
   end
@@ -70,7 +72,36 @@ defmodule GTFSRealtimeViz do
     |> vehicles_by_stop_id()
   end
 
-  def vehicles_we_care_about(state, routes) when routes == %{} do
+  defp routes_from_opts(empty, archives) when empty == %{} do
+    route_stop_ids = for {_, stop_map} <- archives,
+      {stop_id, vehicles} <- stop_map,
+      %{trip: %{route_id: route_id} = trip} when not is_nil(route_id) <- vehicles do
+        {route_id, trip.direction_id, stop_id}
+    end
+    route_stop_ids
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {route_id, route_stop_ids} ->
+      stops = Enum.group_by(route_stop_ids, &elem(&1, 2))
+      stop_values = for {stop_id, triples} <- stops do
+        case Enum.uniq(triples) do
+          [{_, nil, _}] ->
+            {stop_id, stop_id, :empty}
+          [{_, 0, _}] ->
+            {stop_id, stop_id, :empty}
+          [{_, 1, _}] ->
+            {stop_id, :empty, stop_id}
+          _ ->
+            {stop_id, stop_id, stop_id} # both directions
+        end
+      end
+      {route_id, stop_values}
+    end)
+  end
+  defp routes_from_opts(opts, _) do
+    opts
+  end
+
+  def vehicles_we_care_about(state, []) do
     state
   end
   def vehicles_we_care_about(state, routes) do
